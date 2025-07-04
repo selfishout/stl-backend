@@ -3,7 +3,8 @@ import os
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import JSONResponse
 from pathlib import Path
-from cpp_bridge import compile_cpp_backend, run_cpp_backend  # 👈 import helper functions
+from utils.cpp_bridge import compile_cpp_backend, run_cpp_backend
+
 
 router = APIRouter()
 
