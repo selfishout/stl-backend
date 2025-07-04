@@ -2,18 +2,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import upload
 from fastapi.staticfiles import StaticFiles
-
+import os
 
 app = FastAPI()
+
+# Ensure upload directories exist
+os.makedirs("uploads/stl", exist_ok=True)
+os.makedirs("uploads/ou", exist_ok=True)
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=["http://localhost:3000"],
-    allow_origins=[
-        "https://unrivaled-paletas-19b54d.netlify.app",
-        "https://www.unrivaled-paletas-19b54d.netlify.app"
-    ],
+    allow_origins=["http://localhost:3000"],
+    # allow_origins=[
+    #     "https://unrivaled-paletas-19b54d.netlify.app",
+    #     "https://www.unrivaled-paletas-19b54d.netlify.app"
+    # ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
