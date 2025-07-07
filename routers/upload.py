@@ -19,24 +19,19 @@ async def upload_stl(file: UploadFile = File(...)):
     with stl_path.open("wb") as buffer:
         buffer.write(await file.read())
 
-    # 👇 compile the backend
+    # Compile the backend (if needed)
     success, message = compile_cpp_backend()
     if not success:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Compilation failed", "details": message}
-        )
+        return JSONResponse(status_code=500, content={"error": "Compilation failed", "details": message})
 
-    # 👇 run the backend
-    ou_path = OU_DIR / "generated_points.ou"
+    # Run the backend to generate the .ou file
+    ou_filename = f"{file.filename.rsplit('.', 1)[0]}.ou"
+    ou_path = OU_DIR / ou_filename
     success, message = run_cpp_backend(stl_path, ou_path)
     if not success:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Execution failed", "details": message}
-        )
+        return JSONResponse(status_code=500, content={"error": "Execution failed", "details": message})
 
     return {
         "stl_url": f"/uploads/stl/{file.filename}",
-        "ou_url": f"/uploads/ou/generated_points.ou"
+        "ou_url": f"/uploads/ou/{ou_filename}"
     }

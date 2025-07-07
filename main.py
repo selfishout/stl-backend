@@ -14,8 +14,8 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=["http://localhost:3000"],
-    allow_origins=["*"],  # Allow all origins for development; restrict in production
+    allow_origins=["http://localhost:3000"],
+    # allow_origins=["*"],  # Allow all origins for development; restrict in production
     # allow_origins=[
     #     "https://unrivaled-paletas-19b54d.netlify.app",
     #     "https://www.unrivaled-paletas-19b54d.netlify.app"
@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(upload.router)
+app.include_router(upload.router, prefix="")
 
 @app.get("/")
 def root():

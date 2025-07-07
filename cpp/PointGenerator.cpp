@@ -37,7 +37,9 @@ std::vector<Point<T>> PointGenerator<T>::halton(size_t numpts, size_t ndims)
         }
         for (size_t ii = 1; ii <= numpts; ++ii)
         {
-            H[ii - 1][k] = v1[ii];
+            if (k == 0) H[ii - 1].x = v1[ii];
+            else if (k == 1) H[ii - 1].y = v1[ii];
+            else if (k == 2) H[ii - 1].z = v1[ii];
         }
     }
 
@@ -168,9 +170,11 @@ std::vector<T> PointGenerator<T>::toOneCol(const std::vector<std::vector<T>>& A)
 
 //
 
-template class PointGenerator<float>;
-template class PointGenerator<double>;
-template class PointGenerator<long double>;
+namespace MF {
+    template class PointGenerator<float>;
+    template class PointGenerator<double>;
+    template class PointGenerator<long double>;
+}
 
 //
 

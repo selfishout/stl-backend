@@ -8,7 +8,7 @@ using namespace MF;
 template <typename T>
 Vec3<T> SignedDistanceCalculator<T>::closestPointOnSegment(const Vec3<T>& p, const Vec3<T>& a, const Vec3<T>& b) {
     Vec3<T> ab = b - a;
-    T t = (p - a).dot(ab) / ab.lengthSq();
+    T t = (p - a).dot(ab) / ab.lengthSquared();
     t = std::max(static_cast<T>(0.0), std::min(static_cast<T>(1.0), t));
     return a + ab * t;
 }
@@ -86,101 +86,75 @@ Vec3<T> SignedDistanceCalculator<T>::closestPointOnTriangle(const Triangle<T>& t
 
 //
 
-// Calculate unsigned distance to surface using octree acceleration
+// Calculate unsigned distance to surface using brute force
 template <typename T>
 T SignedDistanceCalculator<T>::unsignedDistanceToSurface(const Vec3<T>& point, Vec3<T>& closestPoint) const
 {
-    // if (!octree)
-    // {
-    //     // Fallback to brute force if no octree
-    //     T minDist = std::numeric_limits<T>::max();
-    //     for (const auto& tri : triangles)
-    //     {
-    //         Vec3<T> closest = closestPointOnTriangle(tri, point);
-    //         T dist = (point - closest).length();
-    //         if (dist < minDist)
-    //         {
-    //             minDist = dist;
-    //             closestPoint = closest;
-    //         }
-    //     }
-    //     return minDist;
-    // }
-
     T minDist = std::numeric_limits<T>::max();
-    int k = 10;
-    auto nearestFaces = octree->kNearestNeighbors(point, k);
-    for (auto& tri : nearestFaces)
-    {
-        Vec3<T> closest = closestPointOnTriangle(tri.second, point);
+    if (!octree) return minDist;
+    std::vector<Triangle<T>> triangles = octree->query(octreeBounds);
+    for (const auto& tri : triangles) {
+        Vec3<T> closest = closestPointOnTriangle(tri, point);
         T dist = (point - closest).length();
-
-        if (dist < minDist)
-        {
+        if (dist < minDist) {
             minDist = dist;
             closestPoint = closest;
         }
     }
-
     return minDist;
 }
 
 //
 
-// Determine if point is inside mesh using ray casting
+// Determine if point is inside mesh using ray casting (brute force)
 template <typename T>
 bool SignedDistanceCalculator<T>::isPointInside(const Vec3<T>& point) const
 {
-    // std::cout << point.x << ", " << point.y << ", " << point.z << "\n"; exit(1);
-    Vec3<T> rayDir(T(1), T(0), T(0));
-    Ray<T> ray(point, rayDir);
-
-    std::unordered_set<Point<T>, PointHash<T>> intersection_points;
-    // std::unordered_set<Vec3<T>, Vec3TypeHash<T>> intersection_points;
-    // intersection_points.clear();
-
-    octree->traverse([&](const AABB<T>& bounds, int depth, bool isLeaf, const std::vector<Triangle<T>>& triangles) {
-
-        if (triangles.empty()) { return; }
-
-        if (!isLeaf) { return; }
-
-        T tmin, tmax;
-        if (!bounds.rayIntersect(ray, tmin, tmax)) { return; }
-
-        for (const auto& tri : triangles)
-        {
+    if (!octree) return false;
+    
+    // Try multiple ray directions to improve robustness
+    std::vector<Vec3<T>> rayDirections = {
+        Vec3<T>(T(1), T(0), T(0)),   // +X
+        Vec3<T>(T(-1), T(0), T(0)),  // -X
+        Vec3<T>(T(0), T(1), T(0)),   // +Y
+        Vec3<T>(T(0), T(-1), T(0)),  // -Y
+        Vec3<T>(T(0), T(0), T(1)),   // +Z
+        Vec3<T>(T(0), T(0), T(-1))   // -Z
+    };
+    
+    std::vector<Triangle<T>> triangles = octree->query(octreeBounds);
+    
+    for (const auto& rayDir : rayDirections) {
+        Ray<T> ray(point, rayDir);
+        size_t intersections = 0;
+        
+        for (const auto& tri : triangles) {
+            // Moller-Trumbore ray-triangle intersection
             Vec3<T> edge1 = tri.v1 - tri.v0;
             Vec3<T> edge2 = tri.v2 - tri.v0;
             Vec3<T> h = ray.direction.cross(edge2);
             T a = edge1.dot(h);
-
             if (std::abs(a) < T(1e-12)) continue;
-
             T f = T(1) / a;
             Vec3<T> s = ray.origin - tri.v0;
             T u = f * s.dot(h);
-
             if (u < T(0) || u > T(1)) continue;
-
             Vec3<T> q = s.cross(edge1);
             T v = f * ray.direction.dot(q);
-
             if (v < T(0) || u + v > T(1)) continue;
-
             T t = f * edge2.dot(q);
-
             if (t > T(1e-12)) {
-                Point<T> point_intersect(ray.origin + ray.direction * t);
-                intersection_points.insert(point_intersect);
+                intersections++;
             }
         }
-
-        });
-
-
-    size_t intersections = intersection_points.size();
-    return (intersections % 2) == 1;
+        
+        // If we found an odd number of intersections with any ray, the point is inside
+        if ((intersections % 2) == 1) {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 //
@@ -188,24 +162,29 @@ bool SignedDistanceCalculator<T>::isPointInside(const Vec3<T>& point) const
 template <typename T>
 void SignedDistanceCalculator<T>::rebuildOctree(const AABB<T>& bounds)
 {
-    // if (!triangles.empty())
-    // {
-    //     octree = std::make_unique<Octree<T>>(triangles);
-    // }
-
     octree = std::make_unique<Octree<Triangle<T>, T>>(bounds);
+    octreeBounds = bounds;
 }
 
 //
 
 // Add triangle to the surface
 template <typename T>
-void SignedDistanceCalculator<T>::addTriangle(const Vec3<T>& v0, const Vec3<T>& v1, const Vec3<T>& v2, int faceId)
+void SignedDistanceCalculator<T>::addTriangle(const Vec3<T>& v0, const Vec3<T>& v1, const Vec3<T>& v2, int /*faceId*/)
 {
-    // triangles.emplace_back(v0, v1, v2);
-    // octree.reset(); // Invalidate octree, will be rebuilt on next query
-    // std::cout << "added...\n";
-    octree->insert(Triangle<T>(v0, v1, v2, faceId));
+    Triangle<T> tri(v0, v1, v2);
+    Vec3<T> minPt(
+        std::min({v0.x, v1.x, v2.x}),
+        std::min({v0.y, v1.y, v2.y}),
+        std::min({v0.z, v1.z, v2.z})
+    );
+    Vec3<T> maxPt(
+        std::max({v0.x, v1.x, v2.x}),
+        std::max({v0.y, v1.y, v2.y}),
+        std::max({v0.z, v1.z, v2.z})
+    );
+    AABB<T> triBounds(minPt, maxPt);
+    if (octree) octree->insert(tri, triBounds);
 }
 
 //
@@ -213,7 +192,18 @@ void SignedDistanceCalculator<T>::addTriangle(const Vec3<T>& v0, const Vec3<T>& 
 template <typename T>
 void SignedDistanceCalculator<T>::addTriangle(const Triangle<T>& triangle)
 {
-    octree->insert(triangle);
+    Vec3<T> minPt(
+        std::min({triangle.v0.x, triangle.v1.x, triangle.v2.x}),
+        std::min({triangle.v0.y, triangle.v1.y, triangle.v2.y}),
+        std::min({triangle.v0.z, triangle.v1.z, triangle.v2.z})
+    );
+    Vec3<T> maxPt(
+        std::max({triangle.v0.x, triangle.v1.x, triangle.v2.x}),
+        std::max({triangle.v0.y, triangle.v1.y, triangle.v2.y}),
+        std::max({triangle.v0.z, triangle.v1.z, triangle.v2.z})
+    );
+    AABB<T> triBounds(minPt, maxPt);
+    if (octree) octree->insert(triangle, triBounds);
 }
 
 //
@@ -287,11 +277,8 @@ void SignedDistanceCalculator<T>::clear()
 template <typename T>
 size_t SignedDistanceCalculator<T>::getTriangleCount() const
 {
-    // return triangles.size();
-    auto triangles = octree->getAll();
-    // for (auto& t : triangles) { std::cout << t.id << "\n"; }
-
-    return triangles.size();
+    if (!octree) return 0;
+    return octree->query(octreeBounds).size();
 }
 
 //
@@ -444,3 +431,8 @@ int main()
 }
 
 #endif
+
+// Explicit template instantiation for double
+namespace MF {
+    template class SignedDistanceCalculator<double>;
+}

@@ -15,6 +15,7 @@ namespace MF
 
         std::vector<Triangle<T>> triangles;
         std::unique_ptr<Octree<Triangle<T>, T>> octree;
+        AABB<T> octreeBounds;
 
     public:
 
