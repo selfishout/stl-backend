@@ -1,12 +1,13 @@
 #!/bin/bash
 
-# Build script for STL Dashboard Backend
-echo "Building STL Dashboard Backend..."
+# Build script for STL Dashboard Backend (Production)
+echo "Building STL Dashboard Backend for production..."
 
 # Navigate to backend directory
 cd "$(dirname "$0")"
 
 # Create necessary directories
+echo "Creating upload directories..."
 mkdir -p uploads/stl
 mkdir -p uploads/ou
 mkdir -p cpp/bin
@@ -21,8 +22,9 @@ if ! command -v g++ &> /dev/null; then
     exit 1
 fi
 
-# Compile the C++ executable
-g++ -std=c++17 -O2 \
+# Compile the C++ executable with optimization
+echo "Compiling generate_ou executable..."
+g++ -std=c++17 -O3 -Wall \
     generate_ou.cpp \
     SignedDistanceCalculator.cpp \
     PointGenerator.cpp \
@@ -30,13 +32,19 @@ g++ -std=c++17 -O2 \
 
 # Check if compilation was successful
 if [ $? -eq 0 ]; then
-    echo "C++ compilation successful!"
+    echo "✅ C++ compilation successful!"
     chmod +x bin/generate_ou
+    echo "✅ Executable permissions set"
 else
-    echo "C++ compilation failed!"
+    echo "❌ C++ compilation failed!"
     exit 1
 fi
 
 cd ..
 
-echo "Build completed successfully!" 
+# Install Python dependencies
+echo "Installing Python dependencies..."
+pip install -r requirements.txt
+
+echo "✅ Build completed successfully!"
+echo "🚀 Ready for deployment!" 
