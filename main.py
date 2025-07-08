@@ -14,15 +14,17 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Production CORS settings
 allowed_origins = [
-    "https://stl-dashboard-frontend.netlify.app",  # Your Netlify domain
-    "https://stl-dashboard.netlify.app",           # Alternative Netlify domain
-    "http://localhost:3000",                       # Local development
-    "http://localhost:3001",                       # Alternative local port
+    "https://unrivaled-paletas-19b54d.netlify.app",  # Your actual Netlify domain
+    "https://stl-dashboard-frontend.netlify.app",     # Alternative Netlify domain
+    "https://stl-dashboard.netlify.app",              # Alternative Netlify domain
+    "http://localhost:3000",                          # Local development
+    "http://localhost:3001",                          # Alternative local port
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.netlify\.app",  # Allow any Netlify domain
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
