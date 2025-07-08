@@ -1,91 +1,59 @@
 #pragma once
 
-#include <vector>
-#include <array>
-#include <cmath>
-#include <functional>
+#include "AABB.hpp"
+
+#include <iostream>
 
 namespace MF
 {
+    // Point structure template
     template<typename T>
-    struct Vec3
+    struct Point
     {
-        T x, y, z;
-        
-        Vec3() : x(0), y(0), z(0) {}
-        Vec3(T x, T y, T z) : x(x), y(y), z(z) {}
-        
-        Vec3 operator+(const Vec3& other) const { return Vec3(x + other.x, y + other.y, z + other.z); }
-        Vec3 operator-(const Vec3& other) const { return Vec3(x - other.x, y - other.y, z - other.z); }
-        Vec3 operator*(T scalar) const { return Vec3(x * scalar, y * scalar, z * scalar); }
-        Vec3 operator/(T scalar) const { return Vec3(x / scalar, y / scalar, z / scalar); }
-        
-        T dot(const Vec3& other) const { return x * other.x + y * other.y + z * other.z; }
-        Vec3 cross(const Vec3& other) const { 
-            return Vec3(y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x); 
-        }
-        
-        T length() const { return std::sqrt(x*x + y*y + z*z); }
-        T lengthSquared() const { return x*x + y*y + z*z; }
-        
-        Vec3 normalized() const { 
-            T len = length(); 
-            return len > 0 ? *this / len : Vec3(); 
-        }
-    };
-    
-    template<typename T>
-    using Point = Vec3<T>;
-    
-    template<typename T>
-    struct Triangle
-    {
-        Vec3<T> v0, v1, v2;
-        
-        Triangle() = default;
-        Triangle(const Vec3<T>& v0, const Vec3<T>& v1, const Vec3<T>& v2) : v0(v0), v1(v1), v2(v2) {}
-        
-        Vec3<T> normal() const {
-            Vec3<T> edge1 = v1 - v0;
-            Vec3<T> edge2 = v2 - v0;
-            return edge1.cross(edge2).normalized();
-        }
-    };
-    
-    template<typename T>
-    struct AABB
-    {
-        Vec3<T> min, max;
-        
-        AABB() = default;
-        AABB(const Vec3<T>& min, const Vec3<T>& max) : min(min), max(max) {}
-        
-        bool contains(const Vec3<T>& point) const {
-            return point.x >= min.x && point.x <= max.x &&
-                   point.y >= min.y && point.y <= max.y &&
-                   point.z >= min.z && point.z <= max.z;
-        }
-        
-        T diagonal() const { return (max - min).length(); }
-    };
+        Vec3<T> position;
+        int id;
 
-    template<typename T>
-    struct Ray
-    {
-        Vec3<T> origin;
-        Vec3<T> direction;
-        Ray(const Vec3<T>& o, const Vec3<T>& d) : origin(o), direction(d) {}
+        Point() {}
+        Point(const Vec3<T>& pos) : position(pos) {}
+        Point(T x, T y, T z, int id_ = -1) : position(x, y, z), id{ id_ } {}
+
+        AABB<T> getBounds() const { return AABB<T>(position, position); }
+        Vec3<T> center() const { return position; }
+
+        bool operator==(const Point<T>& other) const
+        {
+            return position == other.position;
+        }
+
+        T& operator[](size_t idx) { return (idx == 0) ? position.x : ((idx == 1) ? position.y : position.z); }
+
+        const T& operator[](size_t idx) const { return (idx == 0) ? position.x : ((idx == 1) ? position.y : position.z); }
+
+        // IO
+
+        void print() const
+        {
+            std::cout << id << ": " << position.x << ", " << position.y << ", " << position.z << "\n";
+        }
+
+        std::string to_string() const
+        {
+            return std::to_string(position.x) + ", " + std::to_string(position.y) + ", " + std::to_string(position.z);
+        }
     };
 
     template<typename T>
     struct PointHash
     {
-        std::size_t operator()(const Point<T>& p) const
+        std::size_t operator()(const Point<T>& obj) const
         {
-            std::size_t h1 = std::hash<T>{}(p.x);
-            std::size_t h2 = std::hash<T>{}(p.y);
-            std::size_t h3 = std::hash<T>{}(p.z);
-            return h1 ^ (h2 << 1) ^ (h3 << 2);
+            // Combine hashes of individual members
+            std::size_t h1 = std::hash<T>{}(obj.position.x);
+            std::size_t h2 = std::hash<T>{}(obj.position.y);
+            // std::size_t h1 = std::hash<int>{}(obj.id);
+            // Simple combination (can be more sophisticated)
+            return h1 ^ (h2 << 1);
+            // return h1;
         }
     };
 } 

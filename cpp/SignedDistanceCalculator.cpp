@@ -8,7 +8,7 @@ using namespace MF;
 template <typename T>
 Vec3<T> SignedDistanceCalculator<T>::closestPointOnSegment(const Vec3<T>& p, const Vec3<T>& a, const Vec3<T>& b) {
     Vec3<T> ab = b - a;
-    T t = (p - a).dot(ab) / ab.lengthSquared();
+    T t = (p - a).dot(ab) / ab.lengthSq();
     t = std::max(static_cast<T>(0.0), std::min(static_cast<T>(1.0), t));
     return a + ab * t;
 }
@@ -183,8 +183,7 @@ void SignedDistanceCalculator<T>::addTriangle(const Vec3<T>& v0, const Vec3<T>& 
         std::max({v0.y, v1.y, v2.y}),
         std::max({v0.z, v1.z, v2.z})
     );
-    AABB<T> triBounds(minPt, maxPt);
-    if (octree) octree->insert(tri, triBounds);
+    if (octree) octree->insert(tri);
 }
 
 //
@@ -202,8 +201,7 @@ void SignedDistanceCalculator<T>::addTriangle(const Triangle<T>& triangle)
         std::max({triangle.v0.y, triangle.v1.y, triangle.v2.y}),
         std::max({triangle.v0.z, triangle.v1.z, triangle.v2.z})
     );
-    AABB<T> triBounds(minPt, maxPt);
-    if (octree) octree->insert(triangle, triBounds);
+    if (octree) octree->insert(triangle);
 }
 
 //

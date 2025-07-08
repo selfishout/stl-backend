@@ -8,9 +8,11 @@
 #include <sstream>
 #include <limits>
 #include "Point.hpp"
+#include "Triangle.hpp"
 #include "PointGenerator.hpp"
 #include "SignedDistanceCalculator.hpp"
 #include "GeometryIO.hpp"
+#include "Octree.hpp"
 
 using namespace MF;
 
@@ -46,7 +48,8 @@ class STLPointGenerator {
 private:
     std::vector<Point<double>> interiorPoints;
     std::vector<double> properties;
-    SignedDistanceCalculator<double> sdf;
+    std::vector<Triangle<double>> triangles;
+    std::unique_ptr<Octree<Triangle<double>, double>> triangleOctree;
     PointGenerator<double> pointGen;
     
     // Bounding box of the STL
@@ -82,58 +85,126 @@ public:
             maxZ = std::max(maxZ, vertex.z);
         }
         
-        // Add triangles to SDF calculator
-        for (const auto& face : faces) {
+        // Create triangles and add to octree
+        triangles.clear();
+        triangles.reserve(faces.size());
+        
+        for (size_t i = 0; i < faces.size(); ++i) {
+            const auto& face = faces[i];
             if (face.size() >= 3) {
-                sdf.addTriangle(vertices[face[0]], vertices[face[1]], vertices[face[2]], 0);
+                Triangle<double> triangle(
+                    vertices[face[0]], 
+                    vertices[face[1]], 
+                    vertices[face[2]], 
+                    static_cast<int>(i)
+                );
+                triangles.push_back(triangle);
             }
         }
         
-        // Build octree for efficient queries
+        // Build octree for efficient spatial queries
         AABB<double> bounds(Vec3<double>(minX, minY, minZ), Vec3<double>(maxX, maxY, maxZ));
-        sdf.rebuildOctree(bounds);
+        triangleOctree = std::make_unique<Octree<Triangle<double>, double>>(bounds);
+        
+        for (const auto& triangle : triangles) {
+            triangleOctree->insert(triangle);
+        }
         
         std::cout << "STL loaded successfully. Bounding box: [" 
                   << minX << ", " << maxX << "] x [" 
                   << minY << ", " << maxY << "] x [" 
                   << minZ << ", " << maxZ << "]" << std::endl;
-        std::cout << "Loaded " << faces.size() << " triangles" << std::endl;
+        std::cout << "Loaded " << triangles.size() << " triangles" << std::endl;
+        std::cout << "Octree built with " << triangleOctree->getNodeCount() << " nodes, max depth: " 
+                  << triangleOctree->getMaxDepth() << std::endl;
         return true;
+    }
+    
+    // Improved point-in-object test using ray casting
+    bool isPointInside(const Vec3<double>& point) {
+        // Use ray casting with multiple directions for robustness
+        std::vector<Vec3<double>> rayDirections = {
+            Vec3<double>(1, 0, 0),   // +X
+            Vec3<double>(-1, 0, 0),  // -X
+            Vec3<double>(0, 1, 0),   // +Y
+            Vec3<double>(0, -1, 0),  // -Y
+            Vec3<double>(0, 0, 1),   // +Z
+            Vec3<double>(0, 0, -1)   // -Z
+        };
+        
+        int intersectionCount = 0;
+        
+        for (const auto& direction : rayDirections) {
+            // Create a ray from the point in the given direction
+            Ray<double> ray(point, direction);
+            
+            // Query triangles that might intersect with the ray
+            // Use a bounding box around the ray for efficient querying
+            double rayLength = std::max({maxX - minX, maxY - minY, maxZ - minZ}) * 2.0;
+            Vec3<double> rayEnd = point + direction * rayLength;
+            AABB<double> rayBounds(
+                Vec3<double>(std::min(point.x, rayEnd.x), std::min(point.y, rayEnd.y), std::min(point.z, rayEnd.z)),
+                Vec3<double>(std::max(point.x, rayEnd.x), std::max(point.y, rayEnd.y), std::max(point.z, rayEnd.z))
+            );
+            
+            auto candidateTriangles = triangleOctree->query(rayBounds);
+            
+            // Count intersections with triangles
+            for (const auto& triangle : candidateTriangles) {
+                // Simple ray-triangle intersection test
+                Vec3<double> edge1 = triangle.v1 - triangle.v0;
+                Vec3<double> edge2 = triangle.v2 - triangle.v0;
+                Vec3<double> h = ray.direction.cross(edge2);
+                double a = edge1.dot(h);
+                
+                if (std::abs(a) < 1e-10) continue; // Ray is parallel to triangle
+                
+                double f = 1.0 / a;
+                Vec3<double> s = ray.origin - triangle.v0;
+                double u = f * s.dot(h);
+                
+                if (u < 0.0 || u > 1.0) continue;
+                
+                Vec3<double> q = s.cross(edge1);
+                double v = f * ray.direction.dot(q);
+                
+                if (v < 0.0 || u + v > 1.0) continue;
+                
+                double t = f * edge2.dot(q);
+                
+                if (t > 1e-10) { // Intersection found
+                    intersectionCount++;
+                }
+            }
+        }
+        
+        // Point is inside if we have an odd number of intersections in most directions
+        return intersectionCount >= 3; // At least 3 directions show odd intersections
     }
     
     void generateInteriorPoints() {
         // Generate Halton points in the bounding box
-        size_t numPoints = 10000; // Adjust as needed
+        size_t numPoints = 15000; // Increased for better coverage
         auto haltonPoints = pointGen.halton(numPoints, 3);
         
         // Scale points to bounding box
         for (auto& point : haltonPoints) {
-            point.x = minX + (maxX - minX) * point.x;
-            point.y = minY + (maxY - minY) * point.y;
-            point.z = minZ + (maxZ - minZ) * point.z;
+            point.position.x = minX + (maxX - minX) * point.position.x;
+            point.position.y = minY + (maxY - minY) * point.position.y;
+            point.position.z = minZ + (maxZ - minZ) * point.position.z;
         }
         
-        // For now, use a simple heuristic: accept points that are closer to center than to surface
-        // This is a temporary workaround until we fix the octree issue
-        double centerX = (minX + maxX) / 2.0;
-        double centerY = (minY + maxY) / 2.0;
-        double centerZ = (minZ + maxZ) / 2.0;
+        interiorPoints.clear();
+        interiorPoints.reserve(numPoints / 3); // Estimate about 1/3 will be inside
         
-        double maxRadius = std::min({maxX - minX, maxY - minY, maxZ - minZ}) * 0.3; // 30% of smallest dimension
-        
+        // Use octree-based point-in-object test
         for (const auto& point : haltonPoints) {
-            double distFromCenter = std::sqrt(
-                std::pow(point.x - centerX, 2) + 
-                std::pow(point.y - centerY, 2) + 
-                std::pow(point.z - centerZ, 2)
-            );
-            
-            if (distFromCenter < maxRadius) {
+            if (isPointInside(point.position)) {
                 interiorPoints.push_back(point);
             }
         }
         
-        std::cout << "Generated " << interiorPoints.size() << " interior points" << std::endl;
+        std::cout << "Generated " << interiorPoints.size() << " interior points using octree-based testing" << std::endl;
     }
     
     void assignProperties() {
@@ -150,9 +221,9 @@ public:
             double centerZ = (minZ + maxZ) / 2.0;
             
             double distFromCenter = std::sqrt(
-                std::pow(point.x - centerX, 2) + 
-                std::pow(point.y - centerY, 2) + 
-                std::pow(point.z - centerZ, 2)
+                std::pow(point.position.x - centerX, 2) + 
+                std::pow(point.position.y - centerY, 2) + 
+                std::pow(point.position.z - centerZ, 2)
             );
             
             // Calculate maximum possible distance from center
@@ -168,8 +239,8 @@ public:
             // Create temperature-like property (hotter in center, cooler at surface)
             // Temperature decreases with distance from center (simulating heat conduction)
             double temperature = 100.0 * (1.0 - normalizedDist * 0.8) + 
-                               std::sin(point.x * 0.2) * std::cos(point.y * 0.2) * 5.0 +
-                               std::cos(point.z * 0.3) * 3.0;
+                               std::sin(point.position.x * 0.2) * std::cos(point.position.y * 0.2) * 5.0 +
+                               std::cos(point.position.z * 0.3) * 3.0;
             
             // Add some noise and variation
             double noise = (static_cast<double>(rand()) / RAND_MAX - 0.5) * 10.0;
@@ -198,9 +269,9 @@ public:
         
         // Write points and properties
         for (size_t i = 0; i < interiorPoints.size(); ++i) {
-            file << interiorPoints[i].x << " " 
-                 << interiorPoints[i].y << " " 
-                 << interiorPoints[i].z << " " 
+            file << interiorPoints[i].position.x << " " 
+                 << interiorPoints[i].position.y << " " 
+                 << interiorPoints[i].position.z << " " 
                  << properties[i] << "\n";
         }
         
@@ -208,11 +279,12 @@ public:
         std::cout << "Saved " << interiorPoints.size() << " points to " << outputPath << std::endl;
     }
     
-    // Getter methods for the interpolation function
+    // Getter methods for testing
     std::vector<std::vector<double>> getPoints() const {
         std::vector<std::vector<double>> result;
+        result.reserve(interiorPoints.size());
         for (const auto& point : interiorPoints) {
-            result.push_back({point.x, point.y, point.z});
+            result.push_back({point.position.x, point.position.y, point.position.z});
         }
         return result;
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Octree.hpp"
+#include "Triangle.hpp"
 #include "PointGenerator.hpp"
 #include "GeometryIO.hpp"
 

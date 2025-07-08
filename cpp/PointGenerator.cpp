@@ -37,9 +37,9 @@ std::vector<Point<T>> PointGenerator<T>::halton(size_t numpts, size_t ndims)
         }
         for (size_t ii = 1; ii <= numpts; ++ii)
         {
-            if (k == 0) H[ii - 1].x = v1[ii];
-            else if (k == 1) H[ii - 1].y = v1[ii];
-            else if (k == 2) H[ii - 1].z = v1[ii];
+            if (k == 0) H[ii - 1].position.x = v1[ii];
+            else if (k == 1) H[ii - 1].position.y = v1[ii];
+            else if (k == 2) H[ii - 1].position.z = v1[ii];
         }
     }
 
