@@ -38,4 +38,4 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "environment": "production"}
+    return {"status": "healthy", "environment": "development"}
