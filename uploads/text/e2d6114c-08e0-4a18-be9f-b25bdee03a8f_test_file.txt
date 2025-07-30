@@ -1,0 +1,11 @@
+This is a test text file for the STL Dashboard.
+
+It contains multiple lines of text to test the text file viewer functionality.
+
+Features to test:
+1. File upload
+2. Content display
+3. File browsing
+4. CRUD operations
+
+The text viewer should display this content with proper formatting and syntax highlighting. 
